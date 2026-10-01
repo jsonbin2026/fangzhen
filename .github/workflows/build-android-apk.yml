@@ -63,8 +63,8 @@ jobs:
 
       - name: 安装 Unity Hub 与 Android 构建依赖
         run: |
-          apt-get update -qq
-          apt-get install -y -qq openjdk-11-jdk unzip wget xvfb libglu1-mesa >/dev/null 2>&1
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq openjdk-11-jdk unzip wget xvfb libglu1-mesa >/dev/null 2>&1
           echo "sdk.dir=$HOME/android-sdk" >> local.properties
           # 通过 game-ci 安装器获取指定版本编辑器 + Android Build Support
           wget -q https://github.com/game-ci/unity-builder/raw/main/install-unity.sh -O install-unity.sh
