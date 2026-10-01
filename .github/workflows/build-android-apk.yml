@@ -1,5 +1,5 @@
 # CncSim · Android APK 构建工作流（可直接用）
-# 用法：放入仓库 .github/workflows/build-android.yml，推送后在 Actions 页面手动运行
+# 用法：放入仓库 .github/workflows/build-android-apk.yml，推送后在 Actions 页面手动运行
 #
 # 必需 Secrets（仓库 Settings → Secrets and variables → Actions）：
 #   UNITY_EMAIL     Unity 账号邮箱
@@ -48,7 +48,7 @@ jobs:
 
       - name: 裁剪：删除不需要进入构建缓存的目录
         run: |
-          rm -rf .git .github .monkeycode
+          rm -rf .monkeycode
           rm -rf Library Temp obj build *.log
           du -sh Assets Packages ProjectSettings
 
@@ -91,6 +91,12 @@ jobs:
 
       - name: 对齐并签名（无 keystore 则跳过，产出 debug 签名包）
         run: |
+          BUILDTOOLS=$(ls -d "$HOME/android-sdk/build-tools/"*/ 2>/dev/null | sort -V | tail -1)
+          if [ -z "$BUILDTOOLS" ]; then
+            BUILDTOOLS=$(ls -d "$ANDROID_HOME/build-tools/"*/ 2>/dev/null | sort -V | tail -1)
+          fi
+          export PATH="$BUILDTOOLS:$PATH"
+          echo "Using build-tools: $BUILDTOOLS"
           cd build/Android
           APK=$(ls *.apk | head -1)
           zipalign -v 4 "$APK" aligned.apk
