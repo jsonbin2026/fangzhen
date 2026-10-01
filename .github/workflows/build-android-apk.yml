@@ -20,14 +20,14 @@ on:
         required: true
         default: '2022.3.62f1'
         type: string
-      targetPlatform:
-        description: '目标平台'
+      scripting_backend:
+        description: '脚本后端（Mono 最快、最省内存，先跑通这个）'
         required: true
-        default: 'Android'
+        default: 'Mono'
         type: choice
-        options: [Android]
-      androidTargetArchitectures:
-        description: 'Android ABI（多选用逗号分隔）'
+        options: [Mono, IL2CPP]
+      target_abi:
+        description: '目标 ABI（ARMv7 兼容性最好）'
         required: true
         default: 'ARMv7'
         type: choice
@@ -60,9 +60,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Library
-          key: Library-${{ inputs.targetPlatform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          key: Library-Android-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
           restore-keys: |
-            Library-${{ inputs.targetPlatform }}-
+            Library-Android-
             Library-
 
       - name: 构建 Android APK
@@ -74,10 +74,11 @@ jobs:
           UNITY_TOTP_KEY: ${{ secrets.UNITY_TOTP_KEY }}
         with:
           unityVersion: ${{ inputs.unityVersion }}
-          targetPlatform: ${{ inputs.targetPlatform }}
-          androidTargetArchitectures: ${{ inputs.androidTargetArchitectures }}
+          targetPlatform: Android
+          androidTargetArchitectures: ${{ inputs.target_abi }}
           androidTargetSdkVersion: ${{ inputs.androidTargetSdkVersion }}
           androidExportType: ${{ inputs.androidExportType }}
+          customParameters: -buildTarget Android -scriptingBackend ${{ inputs.scripting_backend }}
 
       - name: 上传产物
         uses: actions/upload-artifact@v4
