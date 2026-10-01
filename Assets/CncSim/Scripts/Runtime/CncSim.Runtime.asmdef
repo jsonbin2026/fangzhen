@@ -1,0 +1,17 @@
+{
+    "name": "CncSim.Runtime",
+    "rootNamespace": "CncSim.Runtime",
+    "references": [
+        "CncSim.Core",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
