@@ -1,44 +1,54 @@
-# CncSim · Android APK 构建工作流（可直接用）
-# 用法：放入仓库 .github/workflows/build-android-apk.yml，推送后在 Actions 页面手动运行
+# CncSim · Android APK 构建工作流
+# 用法：推送到 main 后，在仓库 Actions 页面手动选择 "Build Android APK" 运行
 #
 # 必需 Secrets（仓库 Settings → Secrets and variables → Actions）：
+#   UNITY_LICENSE   Unity 许可证（.ulf 内容）。获取方式见 game-ci 文档
 #   UNITY_EMAIL     Unity 账号邮箱
 #   UNITY_PASSWORD  Unity 账号密码
-#   UNITY_TOTP_KEY  （可选）开启 2FA 时填 Authenticator 的密钥
-# 推荐再添：KEYSTORE_BASE64 / KEYSTORE_PASS / KEY_ALIAS / KEY_PASS，用于发布签名
+#   UNITY_TOTP_KEY  （可选）开启 2FA 时填 Authenticator 密钥
 #
-# 免费额度：GitHub 提供 2000 分钟/月 Linux runner（Unity 构建约消耗 25~45 分钟/次）
+# 说明：本工作流使用 game-ci/unity-builder Action 自动完成 Unity 安装、
+#       授权与构建，无需手动下载安装脚本。
 
 name: Build Android APK
 
 on:
   workflow_dispatch:
     inputs:
-      scripting_backend:
-        description: '脚本后端'
+      unityVersion:
+        description: 'Unity 版本'
         required: true
-        default: 'Mono'
+        default: '2022.3.62f1'
+        type: string
+      targetPlatform:
+        description: '目标平台'
+        required: true
+        default: 'Android'
         type: choice
-        options: [Mono, IL2CPP]
-      target_abi:
-        description: '目标 ABI'
+        options: [Android]
+      androidTargetArchitectures:
+        description: 'Android ABI（多选用逗号分隔）'
         required: true
         default: 'ARMv7'
         type: choice
-        options: [ARMv7, ARM64, ARMv7+ARM64]
+        options: [ARMv7, ARM64, 'ARMv7, ARM64']
+      androidTargetSdkVersion:
+        description: 'Android Target SDK'
+        required: true
+        default: 'Auto'
+        type: choice
+        options: [Auto, 33, 34]
+      androidExportType:
+        description: '导出类型'
+        required: true
+        default: 'androidPackage'
+        type: choice
+        options: [androidPackage, androidAppBundle]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 300
-
-    env:
-      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-      UNITY_TOTP_KEY: ${{ secrets.UNITY_TOTP_KEY }}
-      SCRIPTING_BACKEND: ${{ inputs.scripting_backend }}
-      TARGET_ABI: ${{ inputs.target_abi }}
 
     steps:
       - name: 检出仓库（含 LFS）
@@ -46,73 +56,32 @@ jobs:
         with:
           lfs: true
 
-      - name: 裁剪：删除不需要进入构建缓存的目录
-        run: |
-          rm -rf .monkeycode
-          rm -rf Library Temp obj build *.log
-          du -sh Assets Packages ProjectSettings
-
-      - name: 缓存 Unity 编辑器与 Android 模块
+      - name: 缓存 Unity Library
         uses: actions/cache@v4
         with:
-          path: |
-            /opt/unity
-            ~/.cache/unity
-            ~/.android
-          key: unity-2022.3.62f1-android-${{ runner.os }}
+          path: Library
+          key: Library-${{ inputs.targetPlatform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ inputs.targetPlatform }}-
+            Library-
 
-      - name: 安装 Unity Hub 与 Android 构建依赖
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq openjdk-11-jdk unzip wget xvfb libglu1-mesa >/dev/null 2>&1
-          echo "sdk.dir=$HOME/android-sdk" >> local.properties
-          # 通过 game-ci 安装器获取指定版本编辑器 + Android Build Support
-          wget -q https://github.com/game-ci/unity-builder/raw/main/install-unity.sh -O install-unity.sh
-          bash install-unity.sh --version 2022.3.62f1 --modules android
-
-      - name: 激活 Unity 许可证
-        run: |
-          xvfb-run -a unity -quit -batchmode \
-            -username "$UNITY_EMAIL" -password "$UNITY_PASSWORD" \
-            ${UNITY_TOTP_KEY:+-totp-key "$UNITY_TOTP_KEY"} \
-            -serial "$UNITY_LICENSE" \
-            -logFile activate.log || true
-          tail -20 activate.log
-
-      - name: 构建 APK
-        run: |
-          mkdir -p build/Android
-          xvfb-run -a unity -quit -batchmode -nographics \
-            -projectPath "$GITHUB_WORKSPACE" \
-            -executeMethod CncSim.EditorTools.BuildAndroid.Build \
-            -buildTarget Android \
-            -logFile build.log
-          ls -lh build/Android/
-
-      - name: 对齐并签名（无 keystore 则跳过，产出 debug 签名包）
-        run: |
-          BUILDTOOLS=$(ls -d "$HOME/android-sdk/build-tools/"*/ 2>/dev/null | sort -V | tail -1)
-          if [ -z "$BUILDTOOLS" ]; then
-            BUILDTOOLS=$(ls -d "$ANDROID_HOME/build-tools/"*/ 2>/dev/null | sort -V | tail -1)
-          fi
-          export PATH="$BUILDTOOLS:$PATH"
-          echo "Using build-tools: $BUILDTOOLS"
-          cd build/Android
-          APK=$(ls *.apk | head -1)
-          zipalign -v 4 "$APK" aligned.apk
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
-            apksigner sign --ks release.keystore --ks-key-alias "$KEY_ALIAS" \
-              --ks-pass pass:"$KEYSTORE_PASS" --key-pass pass:"$KEY_PASS" aligned.apk
-            mv aligned.apk CncSim-release.apk
-          else
-            mv aligned.apk CncSim-debug.apk
-          fi
-          apksigner verify CncSim-*.apk
+      - name: 构建 Android APK
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_TOTP_KEY: ${{ secrets.UNITY_TOTP_KEY }}
+        with:
+          unityVersion: ${{ inputs.unityVersion }}
+          targetPlatform: ${{ inputs.targetPlatform }}
+          androidTargetArchitectures: ${{ inputs.androidTargetArchitectures }}
+          androidTargetSdkVersion: ${{ inputs.androidTargetSdkVersion }}
+          androidExportType: ${{ inputs.androidExportType }}
 
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: CncSim-Android-APK
-          path: build/Android/CncSim-*.apk
+          name: CncSim-Android-Build
+          path: build
           retention-days: 7
